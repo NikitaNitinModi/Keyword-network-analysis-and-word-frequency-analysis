@@ -1,0 +1,687 @@
+---
+title: "FDA-Project2-Final-Group 13"
+author: "Aneesha Subramanian, Nikita Modi, Shachi Doshi"
+date: "12/14/2021"
+output: html_document
+---
+# --------------------------------------TASK1-------------------------------------------------------------------------------
+```{r}
+#importing desired libraries
+library(ggplot2)
+library(igraph)
+library(dplyr)
+library(stringr)
+library(tidytext)
+library(tidyverse)
+library(janeaustenr)
+library(tidyr)
+library(ggraph)
+library(data.table)
+
+library(wordcloud)
+
+library(RColorBrewer)
+
+library(wordcloud2)
+```
+
+```{r}
+#------------------------------------------Task 1---------------------------------------------
+#Importing and preprocessing data
+#Keyword_data<-read.csv("~/Downloads/Keyword_data - Keyword_data.csv")
+keyword_data<-read.csv("C:/Users/Nikita Modi/Desktop/NeuSem 1/FDA/Project 2/Keyword_data - Keyword_data.csv")
+df = subset(keyword_data, select = -c(Title))
+#1. Creating adjacency matrix
+
+var <- c()
+var <- as.character(unique(unlist(df)))
+library(stringi)
+var1 <- tolower(stri_remove_empty(var, na_empty = FALSE))
+
+
+
+adj_matrix <- matrix(0,nrow = length(var1),ncol=length(var1))
+rownames(adj_matrix) <- c(var1)
+colnames(adj_matrix) <- c(var1)
+
+
+
+n_rows <- dim(df)[1]
+n_cols <- dim(df)[2]
+
+
+df_keywords1 <- keyword_data[!is.na(keyword_data$`Keyword.1`),]
+numb <- length(df_keywords1)
+
+
+
+for(x in 1:n_rows){
+  for(y in 1:n_cols) {
+    for(z in 1:n_cols) {
+      key1 <- tolower(df[[x, y]])
+      key2 <- tolower(df[[x, z]])
+      if((key1 !="")&&(key2 != "") && (key1 != key2)) {
+        adj_matrix[key1,key2] <- adj_matrix[key1,key2] + 1
+      }
+    }
+  }
+}
+```
+
+```{r}
+# 2. Creating a network from the adjaceny matrix
+m<-adj_matrix[1:248, 1:248]
+net1<-graph_from_adjacency_matrix(m,mode="undirected", weighted = TRUE)
+print(net1)
+E(net1)$width <- E(net1)$weight
+l<-layout_nicely(net1)
+
+plot(net1,edge.label=E(net1)$weight,vertex.color="orange",layout=l, vertex.frame.color="#555555",vertex.label.color="black",
+     vertex.size=5,edge.label.color="black",edge.color="Steelblue")
+
+
+
+```
+
+```{r}
+# 3. Degree of network
+deg <- degree(net1, mode="all")
+deg <- data.frame(deg)
+deg
+
+# 3. Strength of network
+strength <- strength(net1, mode="all")
+strength <- data.frame(strength)
+strength
+```
+
+```{r}
+#4. top 10 in degree
+
+library(dplyr)
+degree_top <- deg %>% arrange(desc(deg)) %>% slice(1:10)
+degree_top
+
+
+#4. top 10 in strength
+library(dplyr)
+strength_top <- strength  %>% arrange(desc(strength)) %>% slice(1:10)
+strength_top
+
+strength_degree<-data.frame(deg,strength)
+
+# 5.top 10 pairs
+g  <- graph.adjacency(m,weighted=TRUE) 
+df <- get.data.frame(g)%>%
+  arrange(desc(weight))%>%
+  slice(1:10)
+df
+
+```
+
+```{r}
+#6. Avg strength v/s degree
+table<- merge(deg,strength, by=0, all=TRUE)
+Avg_Strength <- table %>% 
+  group_by(deg) %>% 
+  summarise(Avg_Strength = mean(strength))
+p <- ggplot(Avg_Strength, aes(x=deg, y=Avg_Strength)) + geom_point(color='Steelblue')
+p
+
+#Heatmap
+netm <- get.adjacency(net1, attr="weight", sparse=F)
+palf <- colorRampPalette(c("gold", "red"))
+heatmap(netm, Rowv = NA, Colv = NA, col = palf(100),
+scale="none", margins=c(10,10) )
+
+```
+
+```{r}
+
+#------------------------------TASK 2-----------------------------------------------------
+#----------------------------------2017------------------------------------------------------------
+
+
+word_df<-read.csv("C:/Users/Nikita Modi/Desktop/NeuSem 1/FDA/Project 2/Data 2/2017.csv")
+df<-data.frame(unique(word_df$date))
+df_year<-as.POSIXct(word_df$date,format="%Y-%m-%d %H:%M:%S")
+df_year<-format(df_year,format="%Y")
+#pre-processing data
+df_final<-data.frame(word_df$tweet,df_year) %>%
+  filter(df_year=="2017")
+names(df_final)[1]<-"tweet" 
+
+# Words as tokens and # Word frequency
+word_t<- df_final %>%
+  unnest_tokens(word,tweet) %>% 
+  select(word) %>% 
+  filter(!word %in% c("https", "t.co", "amp"),   # and whatever else to ignore
+       !grepl("^\\d+$|http\\w+|@\\w+,[[:punct:]],[[:cntrl:]]|[[:digit:]]|[ \t]{2,}|^\\s+|\\s+$|[^[:alnum:]]|[^a-zA-Z0-9 ]+", word))  
+
+
+custom_stopwords <- read.csv("C:/Users/Nikita Modi/Downloads/Stop_words.csv", header = FALSE) 
+ 
+custom_stopwords <- as.character(custom_stopwords$V1) 
+
+
+word_f<-word_t%>%
+  filter(!word %in% custom_stopwords )
+word_c<-word_f%>%
+count( word, sort = TRUE)
+total_words <- word_c%>% 
+summarize(total = sum(n))
+final_words <- data.frame(word_c, total_words)
+final_words$freq<-(final_words$n)/(final_words$total)
+
+#1. Word frequency for 2017 (excluding stop words)
+final_words
+
+#2. Top 10 words for 2017 by highest value of frequency
+top_word<-final_words%>% 
+ arrange(desc(freq))%>% 
+  slice(1:10)
+top_word
+
+# 3. Histogram of word frequencies - 2017
+ggplot(top_word, aes(freq)) +
+  geom_histogram(bins=30,show.legend = FALSE,fill="Steelblue") 
+
+# 4. Zipf's law and log-log plot of word freq and rank for 2017
+freq_by_rank <- final_words %>%
+mutate(rank = row_number() )
+freq_by_rank %>% 
+  ggplot(aes(rank, freq)) + 
+  geom_line(size = 1.1, alpha = 0.8, show.legend = FALSE, color="Steelblue") + 
+  scale_x_log10() +
+  scale_y_log10()
+rank_subset <- freq_by_rank %>% 
+  filter(rank < 1000,
+         rank > 10)
+lm(log10(freq) ~ log10(rank), data = rank_subset)
+freq_by_rank %>% 
+  ggplot(aes(rank, freq)) + 
+  geom_abline(intercept = -1.71, slope = -0.64, 
+              color = "gray50", linetype = 2) +
+  geom_line(size = 1.1, alpha = 0.8, show.legend = FALSE, color="Steelblue") + 
+  scale_x_log10() +
+  scale_y_log10()
+
+# bigrams
+word_bigrams <- df_final %>%
+ unnest_tokens(bigram, tweet, token = "ngrams", n = 2)
+word_bigrams
+# Counting bigrams
+word_bigrams %>%
+  count(bigram, sort = TRUE)
+# bigrams with stop words
+bigrams_separated <- word_bigrams %>%
+  separate(bigram, c("word1", "word2"), sep = " ")
+bigrams_filtered <- bigrams_separated %>%
+ filter(!word1 %in% custom_stopwords) %>%
+filter(!word2 %in% custom_stopwords)%>%
+  filter(!word1 %in% c("https", "t.co", "amp"),   # and whatever else to ignore
+         !grepl("^\\d+$,http\\w+|@\\w+|[[:punct:]]|[[:cntrl:]]|[0-9]|[ \t]{2,}|^\\s+|\\s+$|[^[:alnum:]]|[^a-zA-Z0-9 ]+", word1))%>%
+  filter(!word2 %in% c("https", "t.co", "amp"),   # and whatever else to ignore
+         !grepl("^\\d+$,http\\w+|@\\w+|[[:punct:]]|[[:cntrl:]]|[0-9]|[ \t]{2,},^\\s+|\\s+$|[^[:alnum:]]|[^a-zA-Z0-9 ]+", word2))
+  
+# new bigram counts:
+bigram_counts <- bigrams_filtered %>% 
+  na.omit()%>% 
+  count(word1, word2, sort = TRUE)
+
+# 5. Visualizing bigram network for 2017
+bigram_counts
+bigram_graph <- bigram_counts %>%
+  filter(n > 2) %>%
+  graph_from_data_frame()
+ggraph(bigram_graph, layout = "fr") +
+  geom_edge_link() +
+  geom_node_point() +
+  geom_node_text(aes(label = name), vjust = 1, hjust = 1)
+a <- grid::arrow(type = "closed", length = unit(.15, "inches"))
+ggraph(bigram_graph, layout = "fr") +
+  geom_edge_link(aes(edge_alpha = n), show.legend = FALSE,
+                 arrow = a, end_cap = circle(.07, 'inches')) +
+  geom_node_point(color = "lightblue", size = 5) +
+  geom_node_text(aes(label = name), vjust = 1, hjust = 1) 
+  
+#WordCloud
+
+
+set.seed(1234)  
+wordcloud(words = final_words$word, freq = final_words$freq, min.freq = 1,           max.words=300, random.order=FALSE, rot.per=0.35, colors=brewer.pal(8, "Dark2"))
+
+
+```
+```{r}
+#------------------------------------2018---------------------------------------------------
+#2018 
+library(dplyr)
+
+word_df_2018<-read.csv("C:/Users/Nikita Modi/Desktop/NeuSem 1/FDA/Project 2/Data 2/2018.csv")
+df_2018<-data.frame(unique(word_df_2018$date))
+df_year_2018<-as.POSIXct(word_df_2018$date,format="%Y-%m-%d %H:%M:%S")
+df_year_2018<-format(df_year_2018,format="%Y")
+df_final_2018<-data.frame(word_df_2018$tweet,df_year_2018) %>%
+  filter(df_year_2018=="2018")
+names(df_final_2018)[1]<-"tweet"
+# Words as tokens and # Word frequency
+word_t_2018<- df_final_2018 %>%
+  unnest_tokens(word,tweet) %>% 
+  select(word) %>% 
+  filter(!word %in% c("https", "t.co", "amp"),   # and whatever else to ignore
+         !grepl("^\\d+$|http\\w+|@\\w+|[[:punct:]]|[[:cntrl:]]|[[:digit:]]|[\t]{2,}|^\\s+|\\s$|[^[:alnum:]]|[^a-zA-Z0-9 ]+", word))
+
+custom_stopwords <- read.csv("C:/Users/Nikita Modi/Downloads/Stop_words.csv", header = FALSE) 
+ 
+custom_stopwords <- as.character(custom_stopwords$V1)
+
+word_f_2018<-word_t_2018%>%
+  filter(!word %in% custom_stopwords)
+word_c_2018<-word_f_2018%>%
+  count( word, sort = TRUE)
+total_words_2018 <- word_c_2018%>% 
+  summarize(total = sum(n))
+##1. Word frequency for 2018 (excluding stop words)
+final_words_2018 <- data.frame(word_c_2018, total_words_2018)
+final_words_2018$freq<-(final_words_2018$n)/(final_words_2018$total)
+final_words_2018
+#2. Top 10 words for 2018 by highest value of frequency
+top_word_2018<-final_words_2018%>% 
+  arrange(desc(freq))%>% 
+  slice(1:10)
+top_word_2018
+
+# 3. Histogram of word frequencies - 2018
+ggplot(top_word_2018, aes(freq)) +
+  geom_histogram(bins=30,show.legend = FALSE, fill="Steelblue") 
+
+# # 4. Zipf's law and log-log plot of word freq and rank for 2018
+freq_by_rank_2018 <- final_words_2018 %>%
+  mutate(rank = row_number() )
+freq_by_rank_2018 %>% 
+  ggplot(aes(rank, freq)) + 
+  geom_line(size = 1.1, alpha = 0.8, show.legend = FALSE, color="Steelblue") + 
+  scale_x_log10() +
+  scale_y_log10()
+rank_subset_2018 <- freq_by_rank_2018 %>% 
+  filter(rank < 1000,
+         rank > 10)
+lm(log10(freq) ~ log10(rank), data = rank_subset_2018)
+freq_by_rank_2018 %>% 
+  ggplot(aes(rank, freq)) + 
+  geom_abline(intercept = -1.71, slope = -0.64, 
+              color = "gray50", linetype = 2) +
+  geom_line(size = 1.1, alpha = 0.8, show.legend = FALSE,color="Steelblue") + 
+  scale_x_log10() +
+  scale_y_log10()
+
+# bigrams
+word_bigrams_2018 <- df_final_2018 %>%
+  unnest_tokens(bigram, tweet, token = "ngrams", n = 2)
+word_bigrams_2018
+# Counting bigrams
+word_bigrams_2018 %>%
+  count(bigram, sort = TRUE)
+# bigrams with stop words
+bigrams_separated_2018 <- word_bigrams_2018 %>%
+  separate(bigram, c("word1", "word2"), sep = " ")
+bigrams_filtered_2018 <- bigrams_separated_2018 %>%
+  filter(!word1 %in% custom_stopwords) %>%
+  filter(!word2 %in% custom_stopwords)%>%
+  filter(!word1 %in% c("https", "t.co", "amp"),   # and whatever else to ignore
+         !grepl("^\\d+$,http\\w+|@\\w+|[[:punct:]]|[[:cntrl:]]|[0-9]|[ \t]{2,}|^\\s+|\\s+$|[^[:alnum:]]|[^a-zA-Z0-9 ]+", word1))%>%
+  filter(!word2 %in% c("https", "t.co", "amp"),   # and whatever else to ignore
+         !grepl("^\\d+$,http\\w+|@\\w+|[[:punct:]]|[[:cntrl:]]|[0-9]|[ \t]{2,},^\\s+|\\s+$|[^[:alnum:]]|[^a-zA-Z0-9 ]+", word2))
+# new bigram counts:
+bigram_counts_2018 <- bigrams_filtered_2018 %>% 
+  na.omit()%>% 
+  count(word1, word2, sort = TRUE)
+
+# # 5. Visualizing bigram network for 2018
+bigram_counts_2018
+bigram_graph_2018 <- bigram_counts_2018 %>%
+  filter(n > 2) %>%
+  graph_from_data_frame()
+ggraph(bigram_graph_2018, layout = "fr") +
+  geom_edge_link() +
+  geom_node_point() +
+  geom_node_text(aes(label = name), vjust = 1, hjust = 1)
+a_2018 <- grid::arrow(type = "closed", length = unit(.15, "inches"))
+ggraph(bigram_graph_2018, layout = "fr") +
+  geom_edge_link(aes(edge_alpha = n), show.legend = FALSE,
+                 arrow = a_2018, end_cap = circle(.07, 'inches')) +
+  geom_node_point(color = "lightblue", size = 5) +
+  geom_node_text(aes(label = name), vjust = 1, hjust = 1)
+
+#WordCloud
+
+
+set.seed(1234) 
+wordcloud(words = final_words_2018$word, freq = final_words_2018$freq, min.freq = 1,           max.words=300, random.order=FALSE, rot.per=0.35, colors=brewer.pal(8, "Dark2"))
+
+
+
+```
+
+```{r}
+#---------------------------------2019-------------------------------------------------------------------------
+
+word_df_2019<-read.csv("C:/Users/Nikita Modi/Desktop/NeuSem 1/FDA/Project 2/Data 2/2019.csv")
+df_2019<-data.frame(unique(word_df_2019$date))
+df_year_2019<-as.POSIXct(word_df_2019$date,format="%Y-%m-%d %H:%M:%S")
+df_year_2019<-format(df_year_2019,format="%Y")
+df_final_2019<-data.frame(word_df_2019$tweet,df_year_2019) %>%
+  filter(df_year_2019=="2019")
+names(df_final_2019)[1]<-"tweet"
+# Words as tokens and # Word frequency
+word_t_2019<- df_final_2019 %>%
+  unnest_tokens(word,tweet) %>% 
+  select(word) %>% 
+  filter(!word %in% c("https", "t.co", "amp"),   # and whatever else to ignore
+         !grepl("^\\d+$|http\\w+|@\\w+|[[:punct:]]|[[:cntrl:]]|[[:digit:]]|[ \t]{2,}|^\\s+|\\s+$|[^[:alnum:]]|[^a-zA-Z0-9 ]+", word))
+
+custom_stopwords <- read.csv("C:/Users/Nikita Modi/Downloads/Stop_words.csv", header = FALSE) 
+ 
+custom_stopwords <- as.character(custom_stopwords$V1)
+
+word_f_2019<-word_t_2019%>%
+  filter(!word %in% custom_stopwords)
+word_c_2019<-word_f_2019%>%
+  count( word, sort = TRUE)
+total_words_2019 <- word_c_2019%>% 
+  summarize(total = sum(n))
+
+#1. Word frequency for 2019 (excluding stop words)
+final_words_2019 <- data.frame(word_c_2019, total_words_2019)
+final_words_2019$freq<-(final_words_2019$n)/(final_words_2019$total)
+final_words_2019
+
+#2. Top 10 words for 2019 by highest value of frequency
+top_word_2019<-final_words_2019%>% 
+  arrange(desc(freq))%>% 
+  slice(1:10)
+top_word_2019
+
+# 3. Histogram of word frequencies - 2019
+ggplot(top_word_2019, aes(freq)) +
+  geom_histogram(bins=30,show.legend = FALSE,fill="Steelblue") 
+
+# 4. Zipf's law and log-log plot of word freq and rank for 2018
+freq_by_rank_2019 <- final_words_2019 %>%
+  mutate(rank = row_number() )
+freq_by_rank_2019 %>% 
+  ggplot(aes(rank, freq)) + 
+  geom_line(size = 1.1, alpha = 0.8, show.legend = FALSE,color="Steelblue") + 
+  scale_x_log10() +
+  scale_y_log10()
+rank_subset_2019 <- freq_by_rank_2019 %>% 
+  filter(rank < 1000,
+         rank > 10)
+lm(log10(freq) ~ log10(rank), data = rank_subset_2019)
+freq_by_rank_2019 %>% 
+  ggplot(aes(rank, freq)) + 
+  geom_abline(intercept = -1.71, slope = -0.64, 
+              color = "gray50", linetype = 2) +
+  geom_line(size = 1.1, alpha = 0.8, show.legend = FALSE, color="Steelblue") + 
+  scale_x_log10() +
+  scale_y_log10()
+
+# bigrams
+word_bigrams_2019 <- df_final_2019 %>%
+  unnest_tokens(bigram, tweet, token = "ngrams", n = 2)
+word_bigrams_2019
+# Counting bigrams
+word_bigrams_2019 %>%
+  count(bigram, sort = TRUE)
+# bigrams with stop words
+bigrams_separated_2019 <- word_bigrams_2019 %>%
+  separate(bigram, c("word1", "word2"), sep = " ")
+
+bigrams_filtered_2019 <- bigrams_separated_2019 %>%
+  filter(!word1 %in% custom_stopwords) %>%
+  filter(!word2 %in% custom_stopwords)%>%
+  filter(!word1 %in% c("https", "t.co", "amp"),   # and whatever else to ignore
+         !grepl("^\\d+$,http\\w+|@\\w+|[[:punct:]]|[[:cntrl:]]|[0-9]|[ \t]{2,}|^\\s+|\\s+$|[^[:alnum:]]|[^a-zA-Z0-9 ]+", word1))%>%
+  filter(!word2 %in% c("https", "t.co", "amp"),   # and whatever else to ignore
+         !grepl("^\\d+$,http\\w+|@\\w+|[[:punct:]]|[[:cntrl:]]|[0-9]|[ \t]{2,},^\\s+|\\s+$|[^[:alnum:]]|[^a-zA-Z0-9 ]+", word2))
+# new bigram counts:
+bigram_counts_2019 <- bigrams_filtered_2019 %>% 
+  na.omit()%>% 
+  count(word1, word2, sort = TRUE)
+
+#  5. Visualizing bigram network for 2018
+bigram_counts_2019
+bigram_graph_2019 <- bigram_counts_2019 %>%
+  filter(n > 2) %>%
+  graph_from_data_frame()
+ggraph(bigram_graph_2019, layout = "fr") +
+  geom_edge_link() +
+  geom_node_point() +
+  geom_node_text(aes(label = name), vjust = 1, hjust = 1)
+a_2019 <- grid::arrow(type = "closed", length = unit(.15, "inches"))
+ggraph(bigram_graph_2019, layout = "fr") +
+  geom_edge_link(aes(edge_alpha = n), show.legend = FALSE,
+                 arrow = a_2019, end_cap = circle(.07, 'inches')) +
+  geom_node_point(color = "lightblue", size = 5) +
+  geom_node_text(aes(label = name), vjust = 1, hjust = 1) 
+
+#WordCloud
+set.seed(1234)  
+wordcloud(words = final_words_2019$word, freq = final_words_2019$freq, min.freq = 1,           max.words=300, random.order=FALSE, rot.per=0.35, colors=brewer.pal(8, "Dark2"))
+
+
+```
+
+```{r}
+#--------------------------------------------2020---------------------------------------------------------
+
+word_df_2020<-read.csv("C:/Users/Nikita Modi/Desktop/NeuSem 1/FDA/Project 2/Data 2/2020.csv")
+df_2020<-data.frame(unique(word_df_2020$date))
+df_year_2020<-as.POSIXct(word_df_2020$date,format="%Y-%m-%d %H:%M:%S")
+df_year_2020<-format(df_year_2020,format="%Y")
+df_final_2020<-data.frame(word_df_2020$tweet,df_year_2020) %>%
+  filter(df_year_2020=="2020")
+names(df_final_2020)[1]<-"tweet"
+# Words as tokens and # Word frequency
+word_t_2020<- df_final_2020 %>%
+  unnest_tokens(word,tweet) %>% 
+  select(word) %>% 
+  filter(!word %in% c("https", "t.co", "amp"),   # and whatever else to ignore
+         !grepl("^\\d+$|http\\w+|@\\w+|[[:punct:]]|[[:cntrl:]]|[[:digit:]]|[ \t]{2,}|^\\s+|\\s+$|[^[:alnum:]]|[^a-zA-Z0-9 ]+", word))
+
+custom_stopwords <- read.csv("C:/Users/Nikita Modi/Downloads/Stop_words.csv", header = FALSE) 
+ 
+custom_stopwords <- as.character(custom_stopwords$V1)
+
+word_f_2020<-word_t_2020%>%
+  filter(!word %in% custom_stopwords)
+word_c_2020<-word_f_2020%>%
+  count( word, sort = TRUE)
+total_words_2020 <- word_c_2020%>% 
+  summarize(total = sum(n))
+
+final_words_2020 <- data.frame(word_c_2020, total_words_2020)
+final_words_2020$freq<-(final_words_2020$n)/(final_words_2020$total)
+#1. Word frequency for 2020 (excluding stop words)
+final_words_2020
+#2. Top 10 words for 2020 by highest value of frequency
+top_word_2020<-final_words_2020%>% 
+  arrange(desc(freq))%>% 
+  slice(1:10)
+top_word_2020
+
+## 3. Histogram of word frequencies - 2020
+ggplot(top_word_2020, aes(freq)) +
+  geom_histogram(bins=30,show.legend = FALSE,fill="Steelblue") 
+
+#4. Zipf's law and log-log plot of word freq and rank for 2020
+freq_by_rank_2020 <- final_words_2020 %>%
+  mutate(rank = row_number() )
+freq_by_rank_2020 %>% 
+  ggplot(aes(rank, freq)) + 
+  geom_line(size = 1.1, alpha = 0.8, show.legend = FALSE,color="Steelblue") + 
+  scale_x_log10() +
+  scale_y_log10()
+rank_subset_2020 <- freq_by_rank_2020 %>% 
+  filter(rank < 1000,
+         rank > 10)
+lm(log10(freq) ~ log10(rank), data = rank_subset_2020)
+freq_by_rank_2020 %>% 
+  ggplot(aes(rank, freq)) + 
+  geom_abline(intercept = -1.71, slope = -0.64, 
+              color = "gray50", linetype = 2) +
+  geom_line(size = 1.1, alpha = 0.8, show.legend = FALSE,color="Steelblue") + 
+  scale_x_log10() +
+  scale_y_log10()
+
+# bigrams
+word_bigrams_2020 <- df_final_2020 %>%
+  unnest_tokens(bigram, tweet, token = "ngrams", n = 2)
+word_bigrams_2020
+# Counting bigrams
+word_bigrams_2020 %>%
+  count(bigram, sort = TRUE)
+# bigrams with stop words
+bigrams_separated_2020 <- word_bigrams_2020 %>%
+  separate(bigram, c("word1", "word2"), sep = " ")
+bigrams_filtered_2020 <- bigrams_separated_2020 %>%
+  filter(!word1 %in% custom_stopwords) %>%
+  filter(!word2 %in% custom_stopwords)%>%
+  filter(!word1 %in% c("https", "t.co", "amp"),   # and whatever else to ignore
+         !grepl("^\\d+$,http\\w+|@\\w+|[[:punct:]]|[[:cntrl:]]|[0-9]|[ \t]{2,}|^\\s+|\\s+$|[^[:alnum:]]|[^a-zA-Z0-9 ]+", word1))%>%
+  filter(!word2 %in% c("https", "t.co", "amp"),   # and whatever else to ignore
+         !grepl("^\\d+$,http\\w+|@\\w+|[[:punct:]]|[[:cntrl:]]|[0-9]|[ \t]{2,},^\\s+|\\s+$|[^[:alnum:]]|[^a-zA-Z0-9 ]+", word2))
+# new bigram counts:
+bigram_counts_2020 <- bigrams_filtered_2020 %>% 
+  na.omit()%>% 
+  count(word1, word2, sort = TRUE)
+
+##  5. Visualizing bigram network for 2020
+bigram_counts_2020
+bigram_graph_2020 <- bigram_counts_2020 %>%
+  filter(n > 2) %>%
+  graph_from_data_frame()
+ggraph(bigram_graph_2020, layout = "fr") +
+  geom_edge_link() +
+  geom_node_point() +
+  geom_node_text(aes(label = name), vjust = 1, hjust = 1)
+a_2020 <- grid::arrow(type = "closed", length = unit(.15, "inches"))
+ggraph(bigram_graph_2020, layout = "fr") +
+  geom_edge_link(aes(edge_alpha = n), show.legend = FALSE,
+                 arrow = a_2020, end_cap = circle(.07, 'inches')) +
+  geom_node_point(color = "lightblue", size = 5) +
+  geom_node_text(aes(label = name), vjust = 1, hjust = 1) 
+
+#WordCloud
+set.seed(1234) 
+wordcloud(words = final_words_2020$word, freq = final_words_2020$freq, min.freq = 1,           max.words=300, random.order=FALSE, rot.per=0.35, colors=brewer.pal(8, "Dark2"))
+
+```
+
+```{r}
+#---------------------------------------2021-------------------------------------------------------
+
+word_df_2021<-read.csv("C:/Users/Nikita Modi/Desktop/NeuSem 1/FDA/Project 2/Data 2/2021.csv")
+df_2021<-data.frame(unique(word_df_2021$date))
+df_year_2021<-as.POSIXct(word_df_2021$date,format="%Y-%m-%d %H:%M:%S")
+df_year_2021<-format(df_year_2021,format="%Y")
+df_final_2021<-data.frame(word_df_2021$tweet,df_year_2021) %>%
+  filter(df_year_2021=="2021")
+names(df_final_2021)[1]<-"tweet"
+# Words as tokens and # Word frequency
+word_t_2021<- df_final_2021 %>%
+  unnest_tokens(word,tweet) %>% 
+  select(word) %>% 
+  filter(!word %in% c("https", "t.co", "amp"),   # and whatever else to ignore
+         !grepl("^\\d+$|http\\w+|@\\w+|[[:punct:]]|[[:cntrl:]]|[[:digit:]]|[ \t]{2,}|^\\s+|\\s+$|[^[:alnum:]]|[^a-zA-Z0-9 ]+", word))
+
+
+custom_stopwords <- read.csv("C:/Users/Nikita Modi/Downloads/Stop_words.csv", header = FALSE) 
+ 
+custom_stopwords <- as.character(custom_stopwords$V1)
+
+word_f_2021<-word_t_2021%>%
+  filter(!word %in% custom_stopwords)
+word_c_2021<-word_f_2021%>%
+  count( word, sort = TRUE)
+total_words_2021 <- word_c_2021%>% 
+  summarize(total = sum(n))
+
+final_words_2021 <- data.frame(word_c_2021, total_words_2021)
+final_words_2021$freq<-(final_words_2021$n)/(final_words_2021$total)
+#1. Word frequency for 2021 (excluding stop words)
+final_words_2021
+#2. Top 10 words for 2021 by highest value of frequency
+top_word_2021<-final_words_2021%>% 
+  arrange(desc(freq))%>% 
+  slice(1:10)
+top_word_2021
+
+## 3. Histogram of word frequencies - 2021
+ggplot(top_word_2021, aes(freq)) +
+  geom_histogram(bins=30,show.legend = FALSE,fill="Steelblue") 
+
+# 4. Zipf's law and log-log plot of word freq and rank for 2021
+freq_by_rank_2021 <- final_words_2021 %>%
+  mutate(rank = row_number() )
+freq_by_rank_2021 %>% 
+  ggplot(aes(rank, freq)) + 
+  geom_line(size = 1.1, alpha = 0.8, show.legend = FALSE,color="Steelblue") + 
+  scale_x_log10() +
+  scale_y_log10()
+rank_subset_2021 <- freq_by_rank_2021 %>% 
+  filter(rank < 1000,
+         rank > 10)
+lm(log10(freq) ~ log10(rank), data = rank_subset_2021)
+freq_by_rank_2021 %>% 
+  ggplot(aes(rank, freq)) + 
+  geom_abline(intercept = -1.71, slope = -0.64, 
+              color = "gray50", linetype = 2) +
+  geom_line(size = 1.1, alpha = 0.8, show.legend = FALSE,color="Steelblue") + 
+  scale_x_log10() +
+  scale_y_log10()
+
+# bigrams
+word_bigrams_2021 <- df_final_2021 %>%
+  unnest_tokens(bigram, tweet, token = "ngrams", n = 2)
+word_bigrams_2021
+# Counting bigrams
+word_bigrams_2021 %>%
+  count(bigram, sort = TRUE)
+# bigrams with stop words
+bigrams_separated_2021 <- word_bigrams_2021 %>%
+  separate(bigram, c("word1", "word2"), sep = " ")
+bigrams_filtered_2021 <- bigrams_separated_2021 %>%
+  filter(!word1 %in% custom_stopwords) %>%
+  filter(!word2 %in% custom_stopwords)%>%
+  filter(!word1 %in% c("https", "t.co", "amp"),   # and whatever else to ignore
+         !grepl("^\\d+$,http\\w+|@\\w+|[[:punct:]]|[[:cntrl:]]|[0-9]|[ \t]{2,}|^\\s+|\\s+$|[^[:alnum:]]|[^a-zA-Z0-9 ]+", word1))%>%
+  filter(!word2 %in% c("https", "t.co", "amp"),   # and whatever else to ignore
+         !grepl("^\\d+$,http\\w+|@\\w+|[[:punct:]]|[[:cntrl:]]|[0-9]|[ \t]{2,},^\\s+|\\s+$|[^[:alnum:]]|[^a-zA-Z0-9 ]+", word2))
+# new bigram counts:
+bigram_counts_2021 <- bigrams_filtered_2021 %>% 
+  na.omit()%>% 
+  count(word1, word2, sort = TRUE)
+
+#5. Visualizing bigram network for 2021
+library(igraph)
+bigram_counts_2021
+bigram_graph_2021 <- bigram_counts_2021 %>%
+  filter(n > 2) %>%
+  graph_from_data_frame()
+ggraph(bigram_graph_2021, layout = "fr") +
+  geom_edge_link() +
+  geom_node_point() +
+  geom_node_text(aes(label = name), vjust = 1, hjust = 1)
+a_2021 <- grid::arrow(type = "closed", length = unit(.15, "inches"))
+ggraph(bigram_graph_2021, layout = "fr") +
+  geom_edge_link(aes(edge_alpha = n), show.legend = FALSE,
+                 arrow = a_2021, end_cap = circle(.07, 'inches')) +
+  geom_node_point(color = "lightblue", size = 5) +
+  geom_node_text(aes(label = name), vjust = 1, hjust = 1) 
+#WordCloud
+set.seed(1234) 
+wordcloud(words = final_words_2021$word, freq = final_words_2021$freq, min.freq = 1,           max.words=300, random.order=FALSE, rot.per=0.35, colors=brewer.pal(8, "Dark2"))
+
+```
